@@ -2,6 +2,17 @@
 
 BabyLog is a personal iOS application built with Swift and SwiftUI to simplify tracking an infant's daily activities. The app was inspired by the need to keep feeding, pumping, diaper changes, and sleep records organized in one place.
 
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/home.png" alt="BabyLog home dashboard" width="220" />
+  <img src="screenshots/timeline.png" alt="BabyLog activity timeline" width="220" />
+  <img src="screenshots/calendar.png" alt="BabyLog calendar" width="220" />
+  <img src="screenshots/analytics.png" alt="BabyLog sleep analytics" width="220" />
+</p>
+
+Home dashboard · Activity timeline · Calendar · Analytics
+
 ## Features
 
 - Breast milk pumping tracking, including volume, duration, and output rate
