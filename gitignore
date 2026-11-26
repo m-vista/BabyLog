@@ -1,0 +1,45 @@
+# Private project documentation
+/docs/
+/AGENTS.md
+
+# Xcode user settings and build output
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+
+# macOS
+.DS_Store
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+GoogleService-Info.plist
+serviceAccount*.json
+*firebase-adminsdk*.json
+.firebaserc
+*.p12
+*.p8
+*.mobileprovision
+*.key
+*.pem
+
+# Firebase local artifacts
+.firebase/
+firebase-debug*.log
+firestore-debug*.log
+ui-debug.log
+
+# Local databases and exports
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.realm
+*.realm.*
