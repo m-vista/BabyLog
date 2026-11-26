@@ -1,0 +1,182 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(babyID, userID) {
+      return /databases/$(database)/documents/babies/$(babyID)/members/$(userID);
+    }
+
+    function membership(babyID) {
+      return get(memberPath(babyID, request.auth.uid)).data;
+    }
+
+    function isActiveMember(babyID) {
+      return signedIn()
+        && exists(memberPath(babyID, request.auth.uid))
+        && membership(babyID).userID == request.auth.uid
+        && membership(babyID).babyID == babyID
+        && membership(babyID).status == "active";
+    }
+
+    function hasRole(babyID, roles) {
+      return isActiveMember(babyID) && membership(babyID).role in roles;
+    }
+
+    function validBabyIdentity(babyID, data) {
+      return data.id == babyID;
+    }
+
+    function validMembershipIdentity(babyID, userID, data) {
+      return data.id == userID
+        && data.userID == userID
+        && data.babyID == babyID
+        && data.role in ["owner", "admin", "caregiver"]
+        && data.status in ["active", "removed"];
+    }
+
+    function bootstrapsOwner(babyID, userID) {
+      return signedIn()
+        && userID == request.auth.uid
+        && !exists(/databases/$(database)/documents/babies/$(babyID))
+        && getAfter(/databases/$(database)/documents/babies/$(babyID)).data.createdByUserID == request.auth.uid
+        && request.resource.data.role == "owner"
+        && request.resource.data.status == "active";
+    }
+
+    function adminCreatesCaregiver(babyID) {
+      return hasRole(babyID, ["admin"])
+        && request.resource.data.role == "caregiver";
+    }
+
+    function adminUpdatesCaregiver(babyID) {
+      return hasRole(babyID, ["admin"])
+        && resource.data.role == "caregiver"
+        && request.resource.data.role == "caregiver";
+    }
+
+    function unchangedMembershipIdentity() {
+      return request.resource.data.id == resource.data.id
+        && request.resource.data.userID == resource.data.userID
+        && request.resource.data.babyID == resource.data.babyID
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function validCreatedDocument(babyID, documentID) {
+      return isActiveMember(babyID)
+        && request.resource.data.id == documentID
+        && request.resource.data.babyID == babyID
+        && request.resource.data.createdByUserID == request.auth.uid;
+    }
+
+    function validUpdatedDocument(babyID) {
+      return isActiveMember(babyID)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.babyID == babyID
+        && resource.data.babyID == babyID
+        && request.resource.data.createdByUserID == resource.data.createdByUserID
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    match /users/{userID} {
+      allow read, create, update, delete: if signedIn() && request.auth.uid == userID;
+    }
+
+    // Collection-group queries require a recursive wildcard match. The query
+    // must constrain userID to the caller; status is deliberately filtered by
+    // the client so a removed membership can be discovered but grants no baby access.
+    match /{path=**}/members/{memberID} {
+      allow list: if signedIn() && resource.data.userID == request.auth.uid;
+    }
+
+    match /babies/{babyID} {
+      allow read: if isActiveMember(babyID);
+      allow create: if signedIn()
+        && validBabyIdentity(babyID, request.resource.data)
+        && request.resource.data.createdByUserID == request.auth.uid
+        && getAfter(memberPath(babyID, request.auth.uid)).data.role == "owner"
+        && getAfter(memberPath(babyID, request.auth.uid)).data.status == "active"
+        && getAfter(memberPath(babyID, request.auth.uid)).data.babyID == babyID;
+      allow update: if hasRole(babyID, ["owner", "admin"])
+        && validBabyIdentity(babyID, request.resource.data)
+        && request.resource.data.createdByUserID == resource.data.createdByUserID
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if hasRole(babyID, ["owner"]);
+
+      match /members/{userID} {
+        // A user may discover their own membership for the collection-group lookup.
+        // A removed membership grants no access to the baby or its other data.
+        allow read: if signedIn()
+          && (resource.data.userID == request.auth.uid || isActiveMember(babyID));
+        allow create: if validMembershipIdentity(babyID, userID, request.resource.data)
+          && (bootstrapsOwner(babyID, userID)
+            || hasRole(babyID, ["owner"])
+            || adminCreatesCaregiver(babyID));
+        allow update: if validMembershipIdentity(babyID, userID, request.resource.data)
+          && unchangedMembershipIdentity()
+          && (hasRole(babyID, ["owner"]) || adminUpdatesCaregiver(babyID));
+        allow delete: if hasRole(babyID, ["owner"])
+          || (hasRole(babyID, ["admin"]) && resource.data.role == "caregiver");
+      }
+
+      match /pumpSessions/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /bottleFeeds/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /nursingSessions/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /sleepSessions/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /diaperEvents/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /checklistItems/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /checklistEvents/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+
+      match /growthMeasurements/{documentID} {
+        allow read: if isActiveMember(babyID);
+        allow create: if validCreatedDocument(babyID, documentID);
+        allow update: if validUpdatedDocument(babyID);
+        allow delete: if isActiveMember(babyID);
+      }
+    }
+  }
+}
